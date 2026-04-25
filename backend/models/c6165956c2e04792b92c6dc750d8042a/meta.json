@@ -1,0 +1,30 @@
+{
+  "arch_hash": "8a40e2deb18b080dcabdfc4b569678be18899b5e",
+  "artifact_id": "c6165956c2e04792b92c6dc750d8042a",
+  "class_names": [
+    "Normal",
+    "Ball Fault",
+    "Inner Race Fault",
+    "Outer Race Fault"
+  ],
+  "created_at": "2026-04-25T05:09:46.295010+00:00",
+  "dropout": 0.3,
+  "hidden_sizes": [
+    128,
+    64,
+    32
+  ],
+  "input_size": 19,
+  "label_map": {
+    "Ball": 1,
+    "IR": 2,
+    "Normal": 0,
+    "OR": 3
+  },
+  "num_classes": 4,
+  "overlap": 0.5,
+  "sampling_rate": 12000,
+  "val_acc": 97.15489989462593,
+  "val_loss": 0.0929839422305425,
+  "window_size": 1024
+}

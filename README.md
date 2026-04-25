@@ -1,292 +1,193 @@
-# CWRU Bearing Fault Classification with PyTorch
+# CWRU Bearing Fault Classification
 
-베어링 고장 진단을 위한 딥러닝 기반 분류 시스템입니다. Case Western Reserve University (CWRU) 베어링 데이터셋을 사용하여 정상 상태와 다양한 고장 유형을 분류합니다.
+Case Western Reserve University(CWRU) 베어링 데이터셋을 사용한 베어링 결함 진단 시스템입니다.
+PyTorch 기반 MLP 모델로 진동 신호를 분류하고, FastAPI 백엔드 + Vue 3 프론트엔드로 학습·추론·이력 관리를 웹에서 제공합니다.
 
-## 🎯 프로젝트 개요
+![Demo](demo.png)
 
-이 프로젝트는 베어링의 진동 신호를 분석하여 다음 4가지 상태를 분류합니다:
+> 자세한 설계는 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), 클래스/시퀀스 다이어그램은 [`docs/UML.md`](docs/UML.md) 참고.
 
-- **Normal**: 정상 상태
-- **Ball Fault**: 볼 결함
-- **Inner Race Fault**: 내륜 결함
-- **Outer Race Fault**: 외륜 결함
+## 주요 기능
 
-## ✨ 주요 기능
+- **웹 기반 학습**: 하이퍼파라미터 입력 → 비동기 학습 → SSE로 실시간 손실/정확도 차트 갱신
+- **웹 기반 추론**: `.mat` 파일 업로드 → 슬라이딩 윈도우 단위 추론 → 확률 평균 집계
+- **모델 레지스트리**: 학습 결과를 자동 저장(`model.pt + scaler.joblib + meta.json`), 활성 모델 승격(promote) 지원
+- **이력 관리**: 학습 런 / 모델 아티팩트 / 추론 로그를 SQLite에 영속화 후 조회
 
-### 1. 특징 추출
-- **시간 도메인 특징**
-  - 평균, 표준편차, RMS, 피크값
-  - 첨도(Kurtosis), 왜도(Skewness)
-  - 파형 인자, 임펄스 인자
-  - 신호 에너지
+## 분류 대상 클래스
 
-- **주파수 도메인 특징**
-  - FFT 기반 파워 스펙트럼
-  - 지배 주파수, 주파수 중심
-  - 스펙트럼 엔트로피
+- **Normal** — 정상 상태
+- **Ball Fault** — 볼 결함
+- **Inner Race Fault (IR)** — 내륜 결함
+- **Outer Race Fault (OR)** — 외륜 결함
 
-### 2. 딥러닝 모델
-- 다층 퍼셉트론(MLP) 아키텍처
-- Batch Normalization으로 안정적인 학습
-- Dropout으로 과적합 방지
-- Learning Rate Scheduler로 최적화
+## 기술 스택
 
-### 3. 시각화
-- 학습 곡선 (Loss & Accuracy)
-- 혼동 행렬 (Confusion Matrix)
-- 분류 성능 리포트
+| 영역 | 스택 |
+|---|---|
+| Backend | FastAPI, Uvicorn, SQLModel(SQLite), sse-starlette |
+| ML / DSP | PyTorch, NumPy, SciPy, scikit-learn, joblib |
+| Frontend | Vue 3, TypeScript, Pinia, Vue Router, Axios, Chart.js, Tailwind CSS |
+| Build | Vite |
 
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 cwru_bearing_classification/
-│
-├── config.py                  # 프로젝트 설정 및 하이퍼파라미터
-├── data_loader.py             # 데이터 로딩 및 전처리
-├── feature_extraction.py      # 특징 추출 함수
-├── dataset.py                 # PyTorch Dataset 클래스
-├── model.py                   # 신경망 모델 정의
-├── trainer.py                 # 학습 및 평가 로직
-├── visualizer.py              # 결과 시각화
-├── main.py                    # 메인 실행 파일
-│
-├── data/                      # 데이터 디렉토리
-│   └── (CWRU .mat 파일들)
-│
-├── models/                    # 저장된 모델
-│   └── best_model.pth
-│
-├── results/                   # 결과 이미지
-│   ├── training_history.png
-│   └── confusion_matrix.png
-│
-├── requirements.txt           # 패키지 의존성
-└── README.md                  # 이 문서
+├── backend/
+│   ├── app/                     # FastAPI 애플리케이션
+│   │   ├── main.py              # 앱 팩토리, lifespan
+│   │   ├── db.py                # SQLModel 테이블
+│   │   ├── api/                 # 라우터 (health, train, predict, models, inferences)
+│   │   ├── services/            # TrainingService, InferenceService, GpuSlotManager, Broadcaster
+│   │   └── schemas/             # Pydantic 입출력 스키마
+│   ├── model.py                 # BearingClassifier (nn.Module)
+│   ├── trainer.py               # 학습 루프 (Early Stopping, LR Scheduler)
+│   ├── data_loader.py           # CWRUDataLoader (.mat 로딩, 슬라이딩 윈도우)
+│   ├── dataset.py               # BearingDataset
+│   ├── feature_extraction.py    # 시간/주파수 도메인 19차원 특징
+│   ├── inference.py             # predict_signal (윈도우 단위 추론 + 집계)
+│   ├── artifact.py              # ModelMeta, save/load
+│   ├── config.py                # 전역 하이퍼파라미터
+│   ├── data/                    # CWRU .mat 입력 파일
+│   ├── models/                  # 저장된 아티팩트
+│   ├── db/                      # SQLite 데이터베이스
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.vue
+│   │   ├── api/client.ts        # axios + 타입 정의
+│   │   ├── router/
+│   │   ├── stores/training.ts   # Pinia (SSE 연결 포함)
+│   │   ├── views/               # PredictView, TrainView, HistoryView
+│   │   └── components/MetricChart.vue
+│   ├── vite.config.ts
+│   └── package.json
+└── docs/
+    ├── ARCHITECTURE.md
+    └── UML.md
 ```
 
-## 🔧 설치 방법
+## 설치 및 실행
 
-### 1. 가상 환경 생성 (선택사항)
+### 사전 준비
+
+- Python 3.10+
+- Node.js 18.18.x
+- (선택) CUDA 환경 — GPU 학습용
+
+### 1) 백엔드
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-```
-
-### 2. 필요한 패키지 설치
-
-```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate           # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+
+# 개발 서버 실행 (기본 포트 8000)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**requirements.txt 내용:**
-```
-torch>=2.0.0
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-scipy>=1.11.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-```
+서버가 시작되면 `db/cwru.sqlite`가 자동 생성되고 `/api/health`로 헬스 체크가 가능합니다.
 
-## 🚀 사용 방법
-
-### 기본 실행
+### 2) 프론트엔드
 
 ```bash
-python main.py
+cd frontend
+npm install
+npm run dev          # 기본 포트 5173, /api는 백엔드로 프록시
 ```
 
-### 단계별 실행
+브라우저에서 `http://localhost:5173` 접속.
 
-1. **데이터 로드 및 전처리**
-```python
-from config import Config
-from data_loader import CWRUDataLoader
+### 3) 데이터 준비
 
-config = Config()
-data_loader = CWRUDataLoader(config)
-X, y = data_loader.load_data()
-```
-
-2. **모델 생성**
-```python
-from model import BearingClassifier
-
-model = BearingClassifier(
-    input_size=X.shape[1],
-    hidden_sizes=[128, 64, 32],
-    num_classes=4,
-    dropout=0.3
-)
-```
-
-3. **학습**
-```python
-from trainer import Trainer
-
-trainer = Trainer(model, config)
-trainer.train(train_loader, test_loader, epochs=50)
-```
-
-4. **평가 및 시각화**
-```python
-from visualizer import Visualizer
-
-visualizer = Visualizer(config)
-visualizer.plot_training_history(trainer.history)
-visualizer.plot_confusion_matrix(y_true, y_pred)
-```
-
-## 📊 데이터셋
-
-### CWRU 베어링 데이터셋
-
-- **출처**: [Case Western Reserve University Bearing Data Center](https://engineering.case.edu/bearingdatacenter)
-- **샘플링 레이트**: 12,000 Hz
-- **윈도우 크기**: 1,024 샘플
-- **클래스**: 4개 (Normal, Ball, IR, OR)
-
-### 데이터 구조
+CWRU 베어링 데이터셋의 `.mat` 파일을 `backend/data/` 디렉터리에 배치합니다.
+파일명에 라벨 키워드가 포함되어 있어야 합니다 (예: `Normal_0.mat`, `Ball_007.mat`, `IR_007.mat`, `OR_007.mat`).
 
 ```
-data/
+backend/data/
 ├── Normal_0.mat
 ├── Ball_007.mat
 ├── IR_007.mat
 └── OR_007.mat
 ```
 
-### 실제 데이터 사용하기
+## 사용 흐름
 
-`data_loader.py`의 `_generate_sample_data()` 함수를 실제 .mat 파일 로딩 코드로 교체하세요:
+1. **학습 (Train 탭)**
+   - EPOCHS / BATCH_SIZE / LEARNING_RATE / DROPOUT 등 입력 → **Start**
+   - 진행 중 SSE로 epoch별 손실·정확도 차트가 실시간 갱신
+   - 종료 시 베스트 가중치가 자동으로 아티팩트로 저장되고, val_acc가 더 높으면 활성 모델로 자동 승격
+2. **추론 (Predict 탭)**
+   - `.mat` 파일 업로드 → 윈도우별 예측 + 확률 평균 집계 결과 표시
+3. **이력 (History 탭)**
+   - 학습 런 / 모델 아티팩트 / 추론 로그 조회
+   - 다른 아티팩트를 선택해 활성 모델로 **Promote** 가능
 
-```python
-def load_mat_file(self, filepath):
-    """실제 CWRU .mat 파일 로드"""
-    mat_data = loadmat(filepath)
-    # 데이터 키는 파일마다 다를 수 있음
-    # 예: 'DE_time', 'FE_time' 등
-    data = mat_data['DE_time'].flatten()
-    return data
-```
-
-## 🏗️ 모델 아키텍처
-
-### 기본 구조
+## 모델 아키텍처
 
 ```
-Input Layer (19 features)
-    ↓
-Dense Layer (128) + BatchNorm + ReLU + Dropout(0.3)
-    ↓
-Dense Layer (64) + BatchNorm + ReLU + Dropout(0.3)
-    ↓
-Dense Layer (32) + BatchNorm + ReLU + Dropout(0.3)
-    ↓
-Output Layer (4 classes)
+Input (19 features)
+   ↓
+Linear(128) → BatchNorm → ReLU → Dropout
+   ↓
+Linear(64)  → BatchNorm → ReLU → Dropout
+   ↓
+Linear(32)  → BatchNorm → ReLU → Dropout
+   ↓
+Linear(num_classes)
 ```
 
-### 특징 벡터 구성 (19차원)
+### 특징 벡터 (19차원)
 
-**시간 도메인 (13개)**
-- 평균, 표준편차, 최대값, 최소값, Peak-to-peak
-- RMS, 절대평균, 피크값
-- 파형 인자, 임펄스 인자
-- 첨도, 왜도, 신호 에너지
+**시간 도메인 (13)** — 평균, 표준편차, 최대, 최소, peak-to-peak, RMS, 절대 평균, 절대 최댓값, 파형 인자(shape factor), 임펄스 인자, 첨도(kurtosis), 왜도(skewness), 신호 에너지
 
-**주파수 도메인 (6개)**
-- 평균 파워, 파워 표준편차, 최대 파워
-- 지배 주파수, 주파수 중심, 스펙트럼 엔트로피
+**주파수 도메인 (6)** — FFT 평균 파워, 파워 표준편차, 최대 파워, 지배 주파수, 주파수 중심(centroid), 스펙트럼 엔트로피
 
-## 📈 결과
+## 추론 파이프라인
 
-### 예상 성능
+신호 → 슬라이딩 윈도우(기본 1024 샘플, overlap 0.5) → 윈도우별 19차원 특징 추출 → 학습 시 사용한 `StandardScaler` 적용 → 배치 추론 → 윈도우별 softmax 확률 평균 → 최종 라벨 결정
 
-- **학습 정확도**: ~95-98%
-- **검증 정확도**: ~92-96%
-- **테스트 정확도**: ~90-95%
+## API 엔드포인트
 
-### 결과 파일
+| Method | Path | 설명 |
+|---|---|---|
+| GET | `/api/health` | 헬스 체크 |
+| POST | `/api/train/start` | 학습 시작 |
+| POST | `/api/train/cancel` | 학습 취소 |
+| GET | `/api/train/events` | SSE 학습 진행 스트림 |
+| POST | `/api/predict` | `.mat` 업로드 후 추론 |
+| GET | `/api/model/current` | 현재 활성 모델 |
+| GET | `/api/models` | 모델 아티팩트 목록 |
+| POST | `/api/models/{id}/promote` | 활성 모델 변경 |
+| GET | `/api/inferences` | 추론 로그 조회 |
 
-학습 완료 후 다음 파일들이 생성됩니다:
+## 데이터 저장소
 
-- `models/best_model.pth`: 최고 성능 모델
-- `results/training_history.png`: 학습 곡선
-- `results/confusion_matrix.png`: 혼동 행렬
+- **SQLite (`backend/db/cwru.sqlite`)**
+  - `TrainingRun` — 학습 작업 메타 및 상태
+  - `EpochMetric` — epoch 단위 손실/정확도/LR
+  - `ModelArtifact` — 모델 레지스트리 (`is_current` 플래그)
+  - `InferenceLog` — 추론 감사 로그
+- **파일 시스템 (`backend/models/{artifact_id}/`)**
+  - `model.pt`, `scaler.joblib`, `meta.json`
 
-## ⚙️ 설정 변경
+## 환경 변수
 
-`config.py` 파일에서 하이퍼파라미터를 조정할 수 있습니다:
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `CWRU_DB_PATH` | `backend/db/cwru.sqlite` | SQLite 파일 경로 |
+| `CWRU_DATA_DIR` | `backend/data` | CWRU `.mat` 디렉터리 |
+| `CWRU_MODELS_DIR` | `backend/models` | 아티팩트 저장 디렉터리 |
 
-```python
-class Config:
-    # 모델 구조
-    HIDDEN_SIZES = [128, 64, 32]  # 히든 레이어 크기
-    DROPOUT = 0.3                  # 드롭아웃 비율
-    
-    # 학습 파라미터
-    BATCH_SIZE = 32                # 배치 크기
-    LEARNING_RATE = 0.001          # 학습률
-    EPOCHS = 50                    # 에포크 수
-    WEIGHT_DECAY = 1e-5            # 가중치 감쇠
-    
-    # 데이터 파라미터
-    WINDOW_SIZE = 1024             # 윈도우 크기
-    SAMPLING_RATE = 12000          # 샘플링 레이트
-```
+> 실제 변수명은 `backend/config.py`를 기준으로 적용됩니다.
 
-## 🔬 성능 향상 팁
+## 데이터셋 출처
 
-### 1. 데이터 증강
-- 윈도우 슬라이딩으로 더 많은 샘플 생성
-- 노이즈 추가로 robust한 모델 학습
+- [Case Western Reserve University Bearing Data Center](https://engineering.case.edu/bearingdatacenter)
+- 샘플링 레이트: 12,000 Hz, 윈도우 크기: 1,024 샘플
 
-### 2. 모델 튜닝
-- 히든 레이어 수와 크기 조정
-- Dropout 비율 변경
-- Learning Rate 조정
+## 라이선스
 
-### 3. 특징 엔지니어링
-- 추가 시간/주파수 도메인 특징
-- Wavelet 변환 특징
-- Envelope 분석
-
-### 4. 앙상블 방법
-- 여러 모델의 예측 결합
-- K-Fold 교차 검증
-
-## 🐛 트러블슈팅
-
-### CUDA 메모리 부족
-```python
-# config.py에서 배치 크기 감소
-BATCH_SIZE = 16  # 32에서 16으로
-```
-
-### 과적합 발생
-```python
-# Dropout 비율 증가
-DROPOUT = 0.5  # 0.3에서 0.5로
-
-# Weight Decay 증가
-WEIGHT_DECAY = 1e-4  # 1e-5에서 1e-4로
-```
-
-### 학습이 느린 경우
-```python
-# 학습률 증가
-LEARNING_RATE = 0.01  # 0.001에서 0.01로
-
-# GPU 사용 확인
-print(torch.cuda.is_available())
-```
-
-## 📚 참고 자료
-
-- [CWRU Bearing Data Center](https://engineering.case.edu/bearingdatacenter)
-- [PyTorch Documentation](https://pytorch.org/docs/stable/index.html)
-- [Scikit-learn Documentation](https://scikit-learn.org/stable/)
-
----
+본 프로젝트는 [LICENSE](LICENSE) 파일에 명시된 조건을 따릅니다.

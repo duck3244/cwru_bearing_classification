@@ -1,3 +1,29 @@
+# Project-specific (large folders / generated files)
+backend/data/                # CWRU .mat 입력 (~84MB)
+backend/db/                  # SQLite DB 및 저널
+backend/models/              # 학습 아티팩트 (model.pt / scaler.joblib / meta.json)
+backend/results/             # 학습 결과 이미지/리포트
+backend/logs/
+backend/.cache/
+
+# 모델 가중치 / 직렬화 파일 (어디에 있든 무시)
+*.pth
+*.pt
+*.ckpt
+*.joblib
+*.pkl
+*.h5
+*.onnx
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.cache/
+frontend/.parcel-cache/
+*.tsbuildinfo
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
